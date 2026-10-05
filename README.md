@@ -40,6 +40,14 @@ python calibrate.py boston_harbor_massachusetts --expect 42.36 -71.05 10
 
 `--expect LAT LNG RADIUS_KM` fails fast if the landmarks aren't where the camera is.
 
+### Interactive demo
+
+```bash
+streamlit run app.py
+```
+
+Opens a browser page with the solved camera's numbers, the reprojection overlay, a map of the landmarks and the solved camera position, and the error-vs-field-of-view curve the solver minimises. Untick landmarks in the sidebar to see how the solution and the held-out error change.
+
 ## Known limitations
 
 - Six points is the bare minimum; 12+ spread across the frame would tighten the result.
