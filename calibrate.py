@@ -113,7 +113,52 @@ def calibrate(world, pixels, width, height):
     return best
 
 
-def draw(image, ids, pixels, projected, out_path):
+def leave_one_out(world, pixels, width, height):
+    """Fitting error flatters the model, since every point helped fit it.
+    Leave-one-out asks the honest question: how well does it predict a
+    landmark it has never seen? Returns one error per point (None if the
+    remaining points had no solution)."""
+    errors = []
+    for k in range(len(pixels)):
+        keep = np.arange(len(pixels)) != k
+        fit = calibrate(world[keep], pixels[keep], width, height)
+        if fit is None:
+            errors.append(None)
+            continue
+        pred, _ = cv2.projectPoints(world[k:k + 1], fit["rvec"], fit["tvec"], fit["K"], None)
+        errors.append(float(np.linalg.norm(pred.ravel() - pixels[k])))
+    return errors
+
+
+def camera_pose(best, origin):
+    """Camera position (lat, lng, alt) and compass heading from a solved pose."""
+    R, _ = cv2.Rodrigues(best["rvec"])
+    cam_local = (-R.T @ best["tvec"]).ravel()
+    view_dir = R.T @ np.array([0, 0, 1.0])
+    heading = (math.degrees(math.atan2(view_dir[0], view_dir[1])) + 360) % 360
+    return local_to_geo(cam_local, origin), heading
+
+
+def pixel_to_ground(u, v, best, plane_up=0.0):
+    """Where a pixel lands on a horizontal surface (e.g. water or a table).
+
+    One image gives only a direction per pixel, not a distance. Knowing the
+    surface's height pins down where along that direction the point is.
+    Returns local East-North-Up metres, or None if the pixel looks above
+    the horizon and never meets the surface.
+    """
+    R, _ = cv2.Rodrigues(best["rvec"])
+    center = (-R.T @ best["tvec"]).ravel()
+    ray = R.T @ np.linalg.inv(best["K"]) @ np.array([u, v, 1.0])
+    if abs(ray[2]) < 1e-9:
+        return None
+    s = (plane_up - center[2]) / ray[2]
+    if s <= 0:
+        return None
+    return center + s * ray
+
+
+def render_overlay(image, ids, pixels, projected):
     vis = image.copy()
     for i, (p, q) in enumerate(zip(pixels, projected)):
         p, q = tuple(int(v) for v in p), tuple(int(v) for v in q)
@@ -123,7 +168,7 @@ def draw(image, ids, pixels, projected, out_path):
         cv2.putText(vis, ids[i], (p[0] + 12, p[1] - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
     cv2.putText(vis, "red = labelled   green = reprojected", (30, 90),
                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
-    cv2.imwrite(str(out_path), vis)
+    return vis
 
 
 def main():
@@ -154,12 +199,7 @@ def main():
     best = calibrate(world, pixels, width, height)
     if best is None:
         sys.exit("no valid pose found")
-
-    R, _ = cv2.Rodrigues(best["rvec"])
-    cam_local = (-R.T @ best["tvec"]).ravel()
-    cam_lat, cam_lng, cam_alt = local_to_geo(cam_local, origin)
-    view_dir = R.T @ np.array([0, 0, 1.0])
-    heading = (math.degrees(math.atan2(view_dir[0], view_dir[1])) + 360) % 360
+    (cam_lat, cam_lng, cam_alt), heading = camera_pose(best, origin)
 
     print(f"Image {image_path.name}: {width}x{height}, {len(ids)} landmarks\n")
     print("Intrinsics")
@@ -173,26 +213,16 @@ def main():
         print(f"  point {i}: {e:6.1f}")
     print(f"  RMS:     {best['rms']:6.1f}")
 
-    # Fitting error flatters the model, since every point helped fit it.
-    # Leave-one-out asks the honest question: how well does it predict
-    # a landmark it has never seen?
     print("\nLeave-one-out error (px): calibrate on the other points, predict this one")
-    held_out = []
-    for k in range(len(ids)):
-        keep = np.arange(len(ids)) != k
-        fit = calibrate(world[keep], pixels[keep], width, height)
-        if fit is None:
-            print(f"  point {ids[k]}: no solution")
-            continue
-        pred, _ = cv2.projectPoints(world[k:k + 1], fit["rvec"], fit["tvec"], fit["K"], None)
-        err = float(np.linalg.norm(pred.ravel() - pixels[k]))
-        held_out.append(err)
-        print(f"  point {ids[k]}: {err:6.1f}")
-    if held_out:
-        print(f"  median:  {np.median(held_out):6.1f}")
+    held_out = leave_one_out(world, pixels, width, height)
+    for i, e in zip(ids, held_out):
+        print(f"  point {i}: " + ("no solution" if e is None else f"{e:6.1f}"))
+    valid = [e for e in held_out if e is not None]
+    if valid:
+        print(f"  median:  {np.median(valid):6.1f}")
 
     out = args.folder / f"{args.folder.name}_reprojected.png"
-    draw(image, ids, pixels, best["projected"], out)
+    cv2.imwrite(str(out), render_overlay(image, ids, pixels, best["projected"]))
     print(f"\nSaved {out}")
 
 
