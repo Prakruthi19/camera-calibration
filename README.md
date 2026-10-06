@@ -53,4 +53,3 @@ Opens a browser page with the solved camera's numbers, the reprojection overlay,
 - Six points is the bare minimum; 12+ spread across the frame would tighten the result.
 - Lens distortion is not modelled. A checkerboard calibration (`cv2.calibrateCamera`) would estimate k1, k2, p1, p2.
 - Landmark altitudes are approximate, which may explain point 2's larger error.
-- `cape_cod_massachusetts/matches.csv` currently fails the data check (shifted columns, a duplicated point, coordinates outside Cape Cod) and needs re-labelling.
