@@ -40,9 +40,18 @@ python calibrate.py boston_harbor_massachusetts --expect 42.36 -71.05 10
 
 `--expect LAT LNG RADIUS_KM` fails fast if the landmarks aren't where the camera is.
 
+### Interactive demo
+
+```bash
+streamlit run app.py
+```
+
+Opens a browser page with the solved camera's numbers, the reprojection overlay, a map of the landmarks and the solved camera position, and the error-vs-field-of-view curve the solver minimises. Untick landmarks in the sidebar to see how the solution and the held-out error change.
+
+**Click to locate:** click any spot on the water and the page shows its latitude and longitude, its distance from the camera, and how far the answer moves per pixel of click error. One photo only gives a direction for each pixel; knowing the surface height (0 m for the water) fixes how far along that direction the point is. A robot does the same thing to turn a pixel into a place to reach, using the known height of its table. Near the horizon one pixel covers many metres, which is why robot cameras usually look down at the work area.
+
 ## Known limitations
 
 - Six points is the bare minimum; 12+ spread across the frame would tighten the result.
 - Lens distortion is not modelled. A checkerboard calibration (`cv2.calibrateCamera`) would estimate k1, k2, p1, p2.
 - Landmark altitudes are approximate, which may explain point 2's larger error.
-- `cape_cod_massachusetts/matches.csv` currently fails the data check (shifted columns, a duplicated point, coordinates outside Cape Cod) and needs re-labelling.
