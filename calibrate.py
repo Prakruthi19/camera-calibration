@@ -139,6 +139,25 @@ def camera_pose(best, origin):
     return local_to_geo(cam_local, origin), heading
 
 
+def pixel_to_ground(u, v, best, plane_up=0.0):
+    """Where a pixel lands on a horizontal surface (e.g. water or a table).
+
+    One image gives only a direction per pixel, not a distance. Knowing the
+    surface's height pins down where along that direction the point is.
+    Returns local East-North-Up metres, or None if the pixel looks above
+    the horizon and never meets the surface.
+    """
+    R, _ = cv2.Rodrigues(best["rvec"])
+    center = (-R.T @ best["tvec"]).ravel()
+    ray = R.T @ np.linalg.inv(best["K"]) @ np.array([u, v, 1.0])
+    if abs(ray[2]) < 1e-9:
+        return None
+    s = (plane_up - center[2]) / ray[2]
+    if s <= 0:
+        return None
+    return center + s * ray
+
+
 def render_overlay(image, ids, pixels, projected):
     vis = image.copy()
     for i, (p, q) in enumerate(zip(pixels, projected)):

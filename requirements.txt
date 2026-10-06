@@ -2,3 +2,4 @@ numpy
 opencv-python
 pandas
 streamlit
+streamlit-image-coordinates
